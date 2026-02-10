@@ -35,3 +35,5 @@ class Application(db.Model):
     job_id = db.Column(db.Integer, db.ForeignKey('jobs.id'))
     status = db.Column(db.String(20), default='pending') # pending, accepted, rejected
     applied_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    user = db.relationship('User', backref=db.backref('applications', lazy=True))
+    job = db.relationship('Job', backref=db.backref('applications', lazy=True))
