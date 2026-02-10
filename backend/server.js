@@ -6,17 +6,19 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 const app = express();
+
+// Middleware
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
-// backend/server.js
+// 1. Database Connection (Local-First Logic)
 const pool = new Pool({
-  // Railway provides the DATABASE_URL automatically
-  connectionString: process.env.DATABASE_URL || `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`,
-  ssl: process.env.DATABASE_URL 
-    ? { rejectUnauthorized: false } // Required for cloud connections
-    : false // No SSL for local development
+  // This will grab the long string from Railway variables automatically
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false // This is mandatory for Railway external connections
+  }
 });
 
 // 2. Multer Storage (CV Uploads)
@@ -28,9 +30,52 @@ const upload = multer({ storage });
 
 // --- ROUTES ---
 
-// A. Apply for Job
+// A. Fetch all jobs
+app.get('/api/jobs', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM jobs ORDER BY id DESC');
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Error fetching jobs:", err);
+        res.status(500).json({ message: "Error fetching jobs" });
+    }
+});
+
+// B. Fetch single job details (With Fix for "404" and ":id" formatting)
+app.get('/api/jobs/:id', async (req, res) => {
+    try {
+        let { id } = req.params;
+        
+        // Fix: Remove leading colon if React accidentally sends ":1" or "1:1"
+        if (id.includes(':')) {
+            id = id.split(':').pop(); 
+        }
+
+        const jobId = parseInt(id);
+        
+        if (isNaN(jobId)) {
+            return res.status(400).json({ message: "Invalid Job ID format" });
+        }
+
+        console.log(`Backend searching for Job ID: ${jobId}`);
+
+        const result = await pool.query('SELECT * FROM jobs WHERE id = $1', [jobId]);
+        
+        if (result.rows.length === 0) {
+            console.log(`Job ID ${jobId} not found in database.`);
+            return res.status(404).json({ message: "Job not found in database" });
+        }
+        
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error("Database error:", err);
+        res.status(500).json({ message: "Server error fetching job details" });
+    }
+});
+
+// C. Apply for Job
 app.post('/api/apply', async (req, res) => {
-    const { jobId, userId } = req.body; // In production, get userId from JWT
+    const { jobId, userId } = req.body; 
     try {
         await pool.query(
             'INSERT INTO applications (user_id, job_id, status, applied_at) VALUES ($1, $2, $3, NOW())',
@@ -43,7 +88,7 @@ app.post('/api/apply', async (req, res) => {
     }
 });
 
-// B. Employer Pipeline (The Logic)
+// D. Employer Pipeline
 app.get('/api/employer/pipeline', async (req, res) => {
     try {
         const query = `
@@ -57,11 +102,12 @@ app.get('/api/employer/pipeline', async (req, res) => {
         const result = await pool.query(query);
         res.json(result.rows);
     } catch (err) {
+        console.error("Pipeline error:", err);
         res.status(500).json({ message: "Fetch failed" });
     }
 });
 
-// C. Update Pipeline Status (Accept/Reject)
+// E. Update Pipeline Status
 app.put('/api/applications/:id', async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
@@ -73,6 +119,7 @@ app.put('/api/applications/:id', async (req, res) => {
     }
 });
 
+// F. Health Check
 app.get('/api/test-db', async (req, res) => {
   try {
     const result = await pool.query('SELECT NOW()');
@@ -82,4 +129,5 @@ app.get('/api/test-db', async (req, res) => {
   }
 });
 
-app.listen(5000, () => console.log('🚀 Backend active on port 5000'));
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`🚀 Backend active on port ${PORT}`));
