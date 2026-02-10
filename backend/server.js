@@ -73,4 +73,13 @@ app.put('/api/applications/:id', async (req, res) => {
     }
 });
 
+app.get('/api/test-db', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT NOW()');
+    res.json({ message: "Database connected!", time: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(5000, () => console.log('🚀 Backend active on port 5000'));
