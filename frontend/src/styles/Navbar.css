@@ -3,10 +3,9 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px 10%;
-    background-color: #1a202c; /* Deep dark slate from your design */
+    padding: 1rem 10%;
+    background-color: #1a202c; /* The dark background from your Figma */
     color: white;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
 
 .logo {
@@ -23,15 +22,14 @@
 
 .nav-links {
     display: flex;
+    gap: 20px;
     align-items: center;
-    gap: 25px;
 }
 
 .nav-links a {
+    color: white;
     text-decoration: none;
-    color: #e2e8f0;
     font-weight: 500;
-    transition: color 0.3s;
 }
 
 .nav-links a:hover {

@@ -1,5 +1,6 @@
 // frontend/src/components/Navbar.js
 import { Link, useNavigate } from 'react-router-dom';
+import '../styles/Navbar.css';
 
 const Navbar = () => {
     const navigate = useNavigate();
@@ -32,3 +33,5 @@ const Navbar = () => {
         </nav>
     );
 };
+
+export default Navbar;

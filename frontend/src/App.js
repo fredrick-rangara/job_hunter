@@ -9,7 +9,7 @@ import JobsList from './components/JobsList';
 import JobDetails from './components/JobDetails';
 import Dashboard from './components/Dashboard';
 import PostJob from './components/PostJob';
-import './App.css'; 
+import './App.css';
 
 function App() {
   return (
