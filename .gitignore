@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+dist/
+.env
+
+# Uploads (Don't share user CVs on GitHub!)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db
