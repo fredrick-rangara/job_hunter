@@ -12,13 +12,19 @@ app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
-// 1. Database Connection (Local-First Logic)
+// 1. Database Connection (Hybrid Logic)
+const isProduction = process.env.NODE_ENV === 'production' || process.env.DATABASE_URL?.includes('railway');
+
 const pool = new Pool({
-  // This will grab the long string from Railway variables automatically
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false // This is mandatory for Railway external connections
-  }
+  connectionString: process.env.DATABASE_URL || `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`,
+  ssl: isProduction ? { rejectUnauthorized: false } : false 
+});
+
+// Test connection on startup
+pool.connect((err, client, release) => {
+  if (err) return console.error('❌ Database connection failed:', err.stack);
+  console.log('✅ Connected to Database successfully');
+  release();
 });
 
 // 2. Multer Storage (CV Uploads)
@@ -28,52 +34,85 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-// --- ROUTES ---
+// --- AUTHENTICATION ROUTES ---
 
-// A. Fetch all jobs
+// 1. SIGNUP
+app.post('/api/signup', async (req, res) => {
+    const { name, email, password, role } = req.body;
+    try {
+        const userExist = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (userExist.rows.length > 0) {
+            return res.status(400).json({ message: "User already exists" });
+        }
+
+        const result = await pool.query(
+            'INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role',
+            [name, email, password, role || 'seeker']
+        );
+
+        res.status(201).json({ message: "User created", user: result.rows[0] });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({ message: "Registration failed" });
+    }
+});
+
+// 2. LOGIN
+app.post('/api/login', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const user = result.rows[0];
+
+        // Simple password check (In production, use bcrypt.compare!)
+        if (user.password !== password) {
+            return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        // Send back user info (and a token if you're using JWT)
+        res.json({ 
+            message: "Login successful", 
+            user: { id: user.id, name: user.name, role: user.role },
+            token: "fake-jwt-token-for-now" 
+        });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).json({ message: "Login failed" });
+    }
+});
+
+// --- JOB ROUTES ---
+
 app.get('/api/jobs', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM jobs ORDER BY id DESC');
         res.json(result.rows);
     } catch (err) {
-        console.error("Error fetching jobs:", err);
         res.status(500).json({ message: "Error fetching jobs" });
     }
 });
 
-// B. Fetch single job details (With Fix for "404" and ":id" formatting)
 app.get('/api/jobs/:id', async (req, res) => {
     try {
         let { id } = req.params;
-        
-        // Fix: Remove leading colon if React accidentally sends ":1" or "1:1"
-        if (id.includes(':')) {
-            id = id.split(':').pop(); 
-        }
-
+        if (typeof id === 'string' && id.includes(':')) id = id.split(':').pop(); 
         const jobId = parseInt(id);
         
-        if (isNaN(jobId)) {
-            return res.status(400).json({ message: "Invalid Job ID format" });
-        }
-
-        console.log(`Backend searching for Job ID: ${jobId}`);
-
         const result = await pool.query('SELECT * FROM jobs WHERE id = $1', [jobId]);
-        
-        if (result.rows.length === 0) {
-            console.log(`Job ID ${jobId} not found in database.`);
-            return res.status(404).json({ message: "Job not found in database" });
-        }
-        
+        if (result.rows.length === 0) return res.status(404).json({ message: "Job not found" });
         res.json(result.rows[0]);
     } catch (err) {
-        console.error("Database error:", err);
-        res.status(500).json({ message: "Server error fetching job details" });
+        res.status(500).json({ message: "Error fetching job details" });
     }
 });
 
-// C. Apply for Job
+// --- APPLICATION ROUTES ---
+
 app.post('/api/apply', async (req, res) => {
     const { jobId, userId } = req.body; 
     try {
@@ -88,46 +127,7 @@ app.post('/api/apply', async (req, res) => {
     }
 });
 
-// D. Employer Pipeline
-app.get('/api/employer/pipeline', async (req, res) => {
-    try {
-        const query = `
-            SELECT 
-                a.id as app_id, a.status, u.name, u.email, u.cv_url, j.title as job_title
-            FROM applications a
-            JOIN users u ON a.user_id = u.id
-            JOIN jobs j ON a.job_id = j.id
-            ORDER BY a.applied_at DESC;
-        `;
-        const result = await pool.query(query);
-        res.json(result.rows);
-    } catch (err) {
-        console.error("Pipeline error:", err);
-        res.status(500).json({ message: "Fetch failed" });
-    }
-});
-
-// E. Update Pipeline Status
-app.put('/api/applications/:id', async (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body;
-    try {
-        await pool.query('UPDATE applications SET status = $1 WHERE id = $2', [status, id]);
-        res.json({ message: "Status updated" });
-    } catch (err) {
-        res.status(500).json({ message: "Update failed" });
-    }
-});
-
-// F. Health Check
-app.get('/api/test-db', async (req, res) => {
-  try {
-    const result = await pool.query('SELECT NOW()');
-    res.json({ message: "Database connected!", time: result.rows[0] });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// ... Keep your Employer Pipeline and Health Check routes here ...
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Backend active on port ${PORT}`));

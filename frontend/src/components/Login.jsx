@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 export default function Login() {
   const [formData, setFormData] = useState({ email: '', password: '' });
@@ -8,14 +9,13 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   
   const navigate = useNavigate();
-  const location = useLocation(); // Hook to access the redirect state
+  const location = useLocation();
 
-  // If the user was redirected here by ProtectedRoute, 'from' will be that path.
-  // Otherwise, it defaults to the home page ('/')
   const from = location.state?.from?.pathname || "/";
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+    if (error) setError(''); // Clear error when user types
   };
 
   const handleSubmit = async (e) => {
@@ -24,17 +24,24 @@ export default function Login() {
     setError('');
 
     try {
-      const response = await axios.post('http://localhost:5000/api/login', formData);
+      // FIX 1: Use variables from formData
+      const { email, password } = formData;
       
-      // Store the auth token
-      localStorage.setItem('token', response.data.token);
+      const res = await axios.post('http://localhost:5000/api/login', { email, password });
       
-      // SUCCESS: Navigate back to the previous page or home
-      // { replace: true } prevents the login page from staying in the browser history
+      // FIX 2: res.data contains the info from our backend logic
+      localStorage.setItem('token', res.data.token);
+      localStorage.setItem('user', JSON.stringify(res.data.user || res.data));
+      
+      toast.success(`Welcome back, ${res.data.user?.name || 'User'}!`);
+
+      // SUCCESS: Navigate
       navigate(from, { replace: true }); 
       
     } catch (err) {
+      console.error("Login detail error:", err.response?.data);
       setError(err.response?.data?.message || 'Invalid email or password');
+      toast.error(err.response?.data?.message || 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -50,7 +57,6 @@ export default function Login() {
           <p className="text-slate-400 text-xl font-medium">Access your personalized dashboard, track applications, and message recruiters instantly.</p>
         </div>
         
-        {/* Decorative elements */}
         <div className="absolute -top-20 -left-20 w-80 h-80 bg-purple-600 rounded-full opacity-20 blur-3xl"></div>
         <div className="absolute bottom-0 right-0 w-full h-1/2 bg-gradient-to-t from-purple-600/20 to-transparent"></div>
       </div>
@@ -64,7 +70,7 @@ export default function Login() {
           </div>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-sm font-bold flex items-center gap-2 animate-shake">
+            <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-sm font-bold flex items-center gap-2">
               <span>⚠️</span> {error}
             </div>
           )}

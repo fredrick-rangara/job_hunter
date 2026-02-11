@@ -18,7 +18,7 @@ export default function Navbar() {
         {/* LOGO & PRIMARY NAV */}
         <div className="flex items-center gap-10">
           <Link to="/" className="text-2xl font-black tracking-tighter text-purple-600 hover:opacity-80 transition-opacity">
-            JOBHUNTER
+            RECRUIT CONNECT
           </Link>
           
           <div className="hidden md:flex gap-8 text-sm font-bold text-slate-500">
